@@ -65,17 +65,17 @@ jobs:
       # 3️⃣ OWASP Dependency-Check (via Docker)
       # -----------------------------
       - name: Run Dependency-Check
-        run: |
-          mkdir -p reports/dependency-check-data
-          docker run --rm \
-            -v "$(pwd)":/src \
-            -v "$(pwd)/reports/dependency-check-data":/usr/share/dependency-check/data \
-            -v "$(pwd)/reports/dependency-check-report":/report \
-            owasp/dependency-check:latest \
-            --scan /src/demo-app \
-            --format "ALL" \
-            --project "demo-app" \
-            --out /report
+  run: |
+    mkdir -p reports/dependency-check-data
+    docker run --rm \
+      -v "$(pwd)":/src \
+      -v "$(pwd)/reports/dependency-check-data":/usr/share/dependency-check/data \
+      -v "$(pwd)/reports/dependency-check-report":/report \
+      owasp/dependency-check:latest \
+      --scan /src \
+      --format "ALL" \
+      --project "demo-app" \
+      --out /report
 
       - name: Upload Dependency-Check artifacts
         uses: actions/upload-artifact@v4
