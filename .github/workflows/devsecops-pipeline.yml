@@ -1,0 +1,102 @@
+name: DevSecOps Security Pipeline
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  SONAR_HOST_URL: http://192.168.93.128:9000
+  SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+  PROJECT_KEY: demo-app
+
+jobs:
+  security-scan:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      # -----------------------------
+      # 1️⃣ Bandit Scan
+      # -----------------------------
+      - name: Install Bandit
+        run: pip install bandit
+
+      - name: Run Bandit
+        run: |
+          mkdir -p reports
+          bandit -r ./demo-app -f json -o reports/bandit-report.json
+      - name: Upload Bandit artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: bandit-report
+          path: reports/bandit-report.json
+
+      # -----------------------------
+      # 2️⃣ Trivy Scan
+      # -----------------------------
+      - name: Install Trivy
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install wget apt-transport-https gnupg lsb-release -y
+          wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo apt-key add -
+          echo deb https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main | sudo tee /etc/apt/sources.list.d/trivy.list
+          sudo apt-get update
+          sudo apt-get install trivy -y
+
+      - name: Run Trivy scan
+        run: trivy fs --security-checks vuln --format json --output reports/trivy-report.json .
+
+      - name: Upload Trivy artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-report
+          path: reports/trivy-report.json
+
+      # -----------------------------
+      # 3️⃣ OWASP Dependency-Check (via Docker)
+      # -----------------------------
+      - name: Run Dependency-Check
+        run: |
+          mkdir -p reports/dependency-check-data
+          docker run --rm \
+            -v "$(pwd)":/src \
+            -v "$(pwd)/reports/dependency-check-data":/usr/share/dependency-check/data \
+            -v "$(pwd)/reports/dependency-check-report":/report \
+            owasp/dependency-check:latest \
+            --scan /src/demo-app \
+            --format "ALL" \
+            --project "demo-app" \
+            --out /report
+
+      - name: Upload Dependency-Check artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dependency-check-report
+          path: reports/dependency-check-report/**
+
+      # -----------------------------
+      # 4️⃣ SonarQube Analysis (Docker-based)
+      # -----------------------------
+      - name: SonarQube Scanner
+        run: |
+          docker run \
+            --rm \
+            -e SONAR_HOST_URL=${{ env.SONAR_HOST_URL }} \
+            -e SONAR_TOKEN=${{ env.SONAR_TOKEN }} \
+            -v "$(pwd)":/usr/src \
+            sonarsource/sonar-scanner-cli:latest
+
+      - name: Upload final pipeline reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: all-scan-reports
+          path: reports/**
